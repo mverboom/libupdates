@@ -35,7 +35,7 @@ updates() {
 		
 		while read -u 11 -r line; do
 		   updates_output+=("$line")
-		done 11< <($SSH "$host" "$CT"' bash -c "https_proxy=\"\" http_proxy=\"\" yum update -y '"${opts[@]}"' 2>&1"' | sed 's/^M//g'; echo $?;)
+		done 11< <($SSH "$host" "$CT"' bash -c "https_proxy=\"\" http_proxy=\"\" yum update -y '"${opts[@]}"' 2>&1"' | sed 's/^M//g'; echo ${PIPESTATUS[0]};)
 		local ret="${updates_output[-1]}"
 		unset updates_output[-1]
 		return $ret
