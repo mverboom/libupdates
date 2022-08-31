@@ -12,7 +12,7 @@ updates() {
         local opts
         declare -a opts
         test "$1" = "-s" && { opts+=( "--setopt" "tsflags=test" ); shift; }
-        test "$1" = "-d" && { opts+=( "--download-only" ); shift; }
+        test "$1" = "-d" && { opts+=( "--downloadonly" ); shift; }
 		local host="$1"
 		local CT=""
 		local ret
