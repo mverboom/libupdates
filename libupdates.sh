@@ -1,9 +1,7 @@
 # ToDo:
-# v check: add force local cache update
 # - verify environment cleanup
 # - upgrade: add snapshot switch
 # - add snapshot option for non container systems
-# v error unsupported os also crops up when system is unreachable through ssh
 # v download updates but don't install (yum update -y --setopt tsflags=test, apt-get --dry-run)
 # v error messages in variable and non zero return status
 
@@ -221,6 +219,7 @@ updates() {
 		"upgrade")
         		unset _LIBUPDATES_ERROR
             test "$1" = "-d" && { opts+=( "-d" ); shift; }
+            test "$1" = "-s" && { opts+=( "-s" ); shift; }
 			local os
 			updates_checkos os "$1" "$2"
 			test "$?" -ne 0 && { _LIBUPDATES_ERROR="updates: Unable to determine OS ($os)"; return 1; }
