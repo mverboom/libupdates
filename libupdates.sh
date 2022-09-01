@@ -11,8 +11,8 @@ updates() {
 	updates_upgrade_rpm() {
         local opts
         declare -a opts
-        test "$1" = "-s" && { opts+=( "--setopt" "tsflags=test" ); shift; }
-        test "$1" = "-d" && { opts+=( "--downloadonly" ); shift; }
+        test "$1" = "-s" && { opts+=( "--setopt" "tsflags=test" ); snapshot=no; shift; }
+        test "$1" = "-d" && { opts+=( "--downloadonly" ); snapshot=no; shift; }
 		local host="$1"
 		local CT=""
 		local ret
@@ -44,8 +44,8 @@ updates() {
 	updates_upgrade_deb() {
         local opts
         declare -a opts
-        test "$1" = "-s" && { opts+=( "--dry-run" ); shift; }
-        test "$1" = "-d" && { opts+=( "--download-only" ); shift; }
+        test "$1" = "-s" && { opts+=( "--dry-run" ); snapshot=no; shift; }
+        test "$1" = "-d" && { opts+=( "--download-only" ); snapshot=no; shift; }
 		local host="$1"
 		local CT=""
 		local ret
