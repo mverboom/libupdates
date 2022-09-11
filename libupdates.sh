@@ -1,12 +1,34 @@
 # ToDo:
 # - verify environment cleanup
-# - upgrade: add snapshot switch
 # - add snapshot option for non container systems
-# v download updates but don't install (yum update -y --setopt tsflags=test, apt-get --dry-run)
-# v error messages in variable and non zero return status
 
 updates() {
-	local SSH="ssh -q -o ConnectTimeout=10"
+	local SSH="ssh -q -o ConnectTimeout=10 -o BatchMode=yes"
+
+        updates_snapshot() {
+	   local snapname="upgrade-$(date "+%Y%m%d-%H%M")"
+           local ctid="$1"
+	   $SSH "$host" "pct snapshot $ctid $snapname" > /dev/null 2>&1
+	   ret="$?"
+	   if test "$ret" -ne 0; then
+              storage=$( $SSH "$host" "pct config $ctid" | sed '/^rootfs/!d; s/rootfs: \(.\+\),.*/\1/')
+              test "$storage" = "" && { updates_output+=( "Unable to create zfs snapshot." ); return 1; }
+              store="${storage/:*/}"
+              ds="${storage/*:/}"
+              $SSH "$host" "grep -q \"^zfspool: $store\"" /etc/pve/storage.cfg || { updates_output+=( "Unable to create snapshot, pve and zfs failed." ); return 1; }
+              dspath=$( $SSH "$host" "sed -n \"/: $store$/,/^$/ { /^\tpool/ s/.*pool //gp }\" /etc/pve/storage.cfg" )
+              $SSH "$host" "zfs snapshot $dspath/$ds@$snapname" > /dev/null 2>&1
+              ret="$?"
+	      if test "$ret" -ne 0; then
+	         updates_output+=( "Unable to create zfs snapshot." )
+	         return $ret
+              else
+	         updates_output+=( "ZFS snapshot $snapname created." )
+              fi
+	   else
+	      updates_output+=( "PVE snapshot $snapname created." )
+	   fi
+        }
 
 	updates_upgrade_rpm() {
         local opts
@@ -22,15 +44,7 @@ updates() {
 		test "$2" != "" && CT="pct exec $2 -- "
 		
 		if test "$CT" != "" -a "$snapshot" != "no"; then
-		   snapname="upgrade-$(date "+%Y%m%d-%H%M")"
-		   $SSH "$host" "pct snapshot $2 $snapname" > /dev/null 2>&1
-		   ret="$?"
-		   if test "$ret" -ne 0; then
-		      updates_output+=( "Unable to create snapshot." )
-		      return $ret
-		   else
-		      updates_output+=( "Snapshot $snapname created." )
-		   fi
+                   updates_snapshot "$2" || return 1
 		fi
 		
 		while read -u 11 -r line; do
@@ -55,15 +69,7 @@ updates() {
 		test "$2" != "" && CT="pct exec $2 -- "
 		
 		if test "$CT" != "" -a "$snapshot" != "no"; then
-		   snapname="upgrade-$(date "+%Y%m%d-%H%M")"
-		   $SSH "$host" "pct snapshot $2 $snapname" > /dev/null 2>&1
-		   ret="$?"
-		   if test "$ret" -ne 0; then
-		      updates_output+=( "Unable to create snapshot." )
-		      return $ret
-		   else
-		      updates_output+=( "Snapshot $snapname created." )
-		   fi
+                   updates_snapshot "$2" || return 1
 		fi
 		
 		while read -u 11 -r line; do
