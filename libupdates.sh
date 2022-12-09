@@ -30,7 +30,7 @@ updates() {
       mapfile -t snapshots < <( echo "$snapinfo" | grep -v -- '-> current' | awk '{print $2}' | grep "^${SNAPBASE}${filter}")
            if test "$action" = "rm"; then
               for snapshot in ${snapshots[@]}; do
-            echo $SSH "$host" "pct delsnapshot $ctid $snapshot" 2> /dev/null || return 1
+                 $SSH "$host" "pct delsnapshot $ctid $snapshot" 2> /dev/null || return 1
               done
            fi
            dspath=$(updates_ctzfsds "$ctid")
@@ -38,7 +38,7 @@ updates() {
            mapfile -t snapshots < <($SSH "$host" "zfs list -t snapshot -H -o name $dspath" | grep "^${dspath}@${SNAPBASE}${filter}" | cut -d '@' -f 2)
            if test "$action" = "rm"; then
               for snapshot in ${snapshots[@]}; do
-            echo $SSH "$host" "zfs destroy ${dspath}@${snapshot}" 2> /dev/null || return 1
+                 $SSH "$host" "zfs destroy ${dspath}@${snapshot}" 2> /dev/null || return 1
               done
            fi
            return 0
