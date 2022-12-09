@@ -6,47 +6,43 @@ updates() {
 	local SSH="ssh -q -o ConnectTimeout=10 -o BatchMode=yes"
 	local SNAPBASE="upgrade-"
 
-        updates_listsnapshots() {
-           local host="$1"
-           local ctid="$2"
-	   snapinfo="$($SSH "$host" "pct listsnapshot $ctid" 2> /dev/null)"
-           test "$?" -ne 0 && return 1
-	   mapfile -t snapshots < <( echo "$snapinfo" | grep -v -- '-> current' | awk '{print $2}' | grep "^${SNAPBASE}")
-           dspath=$(updates_ctzfsds "$ctid")
-           mapfile -t snapshots < <($SSH "$host" "zfs list -t snapshot -H -o name $dspath" | grep "^${dspath}@${SNAPBASE}" | cut -d '@' -f 2)
-           return 0
- 	}
-
-        updates_delsnapshots() {
-           local host="$1"
-           local ctid="$2"
-           local snapinfo snapshots snapshot
-	   snapinfo="$($SSH "$host" "pct listsnapshot $ctid" 2> /dev/null)"
-           test "$?" -ne 0 && return 1
-	   mapfile -t snapshots < <( echo "$snapinfo" | grep -v -- '-> current' | awk '{print $2}' | grep "^${SNAPBASE}")
-           for snapshot in ${snapshots[@]}; do
-	      $SSH "$host" "pct delsnapshot $ctid $snapshot" 2> /dev/null || return 1
-           done
-           dspath=$(updates_ctzfsds "$ctid")
-           unset snapshots
-           mapfile -t snapshots < <($SSH "$host" "zfs list -t snapshot -H -o name $dspath" | grep "^${dspath}@${SNAPBASE}" | cut -d '@' -f 2)
-           for snapshot in ${snapshots[@]}; do
-	      $SSH "$host" "zfs destroy ${dspath}@${snapshot}" 2> /dev/null || return 1
-           done
-           return 0
- 	}
-
         updates_ctzfsds() {
            local ctid="$1" storage store ds dspath
-           storage=$( $SSH "$host" "pct config $ctid" | sed '/^rootfs/!d; s/rootfs: \(.\+\),.*/\1/')
+           storage=$( $SSH "$host" "pct config $ctid" | sed '/^rootfs/!d; s/rootfs: \([^,]\+\),.*/\1/')
            test "$storage" = "" && { updates_output+=( "Unable to create zfs snapshot." ); return 1; }
            store="${storage/:*/}"
            ds="${storage/*:/}"
            $SSH "$host" "grep -q \"^zfspool: $store\"" /etc/pve/storage.cfg || return 1
-           dspath=$( $SSH "$host" "sed -n \"/: $store$/,/^$/ { /^\tpool/ s/.*pool //gp }\" /etc/pve/storage.cfg" )
+           dspath=$( $SSH "$host" "sed -n \"/: $store$/,/^$/ { /^[[:space:]]\+pool/ s/.*pool //gp }\" /etc/pve/storage.cfg" )
            echo "${dspath}/${ds}"
            return 0
         }
+
+        updates_snapshotaction() {
+           local filter=""
+           local action="$1"; shift
+           local host="$1"; shift
+           local ctid="$1"; shift
+           test "$1" = "-f" && { filter="$2"; shift 2; }
+           local snapinfo snapshot
+	   snapinfo="$($SSH "$host" "pct listsnapshot $ctid" 2> /dev/null)"
+           test "$?" -ne 0 && return 1
+	   mapfile -t snapshots < <( echo "$snapinfo" | grep -v -- '-> current' | awk '{print $2}' | grep "^${SNAPBASE}${filter}")
+           if test "$action" = "rm"; then
+              for snapshot in ${snapshots[@]}; do
+	         echo $SSH "$host" "pct delsnapshot $ctid $snapshot" 2> /dev/null || return 1
+              done
+           fi
+           dspath=$(updates_ctzfsds "$ctid")
+           test "$action" = "rm" && unset snapshots
+           mapfile -t snapshots < <($SSH "$host" "zfs list -t snapshot -H -o name $dspath" | grep "^${dspath}@${SNAPBASE}${filter}" | cut -d '@' -f 2)
+           if test "$action" = "rm"; then
+              for snapshot in ${snapshots[@]}; do
+	         echo $SSH "$host" "zfs destroy ${dspath}@${snapshot}" 2> /dev/null || return 1
+              done
+           fi
+           return 0
+ 	}
 
         updates_snapshot() {
 	   local snapname="${SNAPBASE}$(date "+%Y%m%d-%H%M")"
@@ -275,7 +271,7 @@ updates() {
 			$SSH "$1" "grep -q 'xcfs /proc/meminfo' /proc/1/mounts" 2> /dev/null
             return $?
         ;;
-		"list-containers")
+		"container-list")
         		unset _LIBUPDATES_ERROR
 			unset containers
 			$SSH "$1" which pct > /dev/null 2>&1
@@ -286,17 +282,17 @@ updates() {
 			done 6< <( $SSH "$1" "pct list" | tail -n +2 )
 			return 0
 		;;
-		"list-snapshots")
+		"snapshot-list")
 			unset snapshots
 			$SSH "$1" which pct > /dev/null 2>&1
 			test "$?" -ne 0 && return 1
-			updates_listsnapshots "$1" "$2" || return 1
+			updates_snapshotaction list "$1" "$2" "$3" "$4" || return 1
 			return 0
 		;;
-		"del-snapshots")
+		"snapshot-rm")
 			$SSH "$1" which pct > /dev/null 2>&1
 			test "$?" -ne 0 && return 1
-			updates_delsnapshots "$1" "$2" || return 1
+			updates_snapshotaction rm "$1" "$2" "$3" "$4" || return 1
 			return 0
 		;;
 
