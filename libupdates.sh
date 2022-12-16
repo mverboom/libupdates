@@ -6,70 +6,70 @@ updates() {
    local SSH="ssh -q -o ConnectTimeout=10 -o BatchMode=yes"
    local SNAPBASE="upgrade-"
 
-        updates_ctzfsds() {
-           local ctid="$1" storage store ds dspath
-           storage=$( $SSH "$host" "pct config $ctid" | sed '/^rootfs/!d; s/rootfs: \([^,]\+\),.*/\1/')
-           test "$storage" = "" && { updates_output+=( "Unable to create zfs snapshot." ); return 1; }
-           store="${storage/:*/}"
-           ds="${storage/*:/}"
-           $SSH "$host" "grep -q \"^zfspool: $store\"" /etc/pve/storage.cfg || return 1
-           dspath=$( $SSH "$host" "sed -n \"/: $store$/,/^$/ { /^[[:space:]]\+pool/ s/.*pool //gp }\" /etc/pve/storage.cfg" )
-           echo "${dspath}/${ds}"
-           return 0
-        }
+   updates_ctzfsds() {
+      local ctid="$1" storage store ds dspath
+      storage=$( $SSH "$host" "pct config $ctid" | sed '/^rootfs/!d; s/rootfs: \([^,]\+\),.*/\1/')
+      test "$storage" = "" && { updates_output+=( "Unable to create zfs snapshot." ); return 1; }
+      store="${storage/:*/}"
+      ds="${storage/*:/}"
+      $SSH "$host" "grep -q \"^zfspool: $store\"" /etc/pve/storage.cfg || return 1
+      dspath=$( $SSH "$host" "sed -n \"/: $store$/,/^$/ { /^[[:space:]]\+pool/ s/.*pool //gp }\" /etc/pve/storage.cfg" )
+      echo "${dspath}/${ds}"
+      return 0
+   }
 
-        updates_snapshotaction() {
-           local filter=""
-           local action="$1"; shift
-           local host="$1"; shift
-           local ctid="$1"; shift
-           test "$1" = "-f" && { filter="$2"; shift 2; }
-           local snapinfo snapshot
+   updates_snapshotaction() {
+      local filter=""
+      local action="$1"; shift
+      local host="$1"; shift
+      local ctid="$1"; shift
+      test "$1" = "-f" && { filter="$2"; shift 2; }
+      local snapinfo snapshot snapshotct snapshotzfs
       snapinfo="$($SSH "$host" "pct listsnapshot $ctid" 2> /dev/null)"
-           test "$?" -ne 0 && return 1
-      mapfile -t snapshots < <( echo "$snapinfo" | grep -v -- '-> current' | awk '{print $2}' | grep "^${SNAPBASE}${filter}")
-           if test "$action" = "rm"; then
-              for snapshot in ${snapshots[@]}; do
-                 $SSH "$host" "pct delsnapshot $ctid $snapshot" 2> /dev/null || return 1
-              done
-           fi
-           dspath=$(updates_ctzfsds "$ctid")
-           test "$action" = "rm" && unset snapshots
-           mapfile -t snapshots < <($SSH "$host" "zfs list -t snapshot -H -o name $dspath" | grep "^${dspath}@${SNAPBASE}${filter}" | cut -d '@' -f 2)
-           if test "$action" = "rm"; then
-              for snapshot in ${snapshots[@]}; do
-                 $SSH "$host" "zfs destroy ${dspath}@${snapshot}" 2> /dev/null || return 1
-              done
-           fi
-           return 0
-    }
+      test "$?" -ne 0 && return 1
+      mapfile -t snapshotct < <( echo "$snapinfo" | grep -v -- '-> current' | awk '{print $2}' | grep "^${SNAPBASE}${filter}")
+      if test "$action" = "rm"; then
+         for snapshot in ${snapshotct[@]}; do
+            $SSH "$host" "pct delsnapshot $ctid $snapshot" 2> /dev/null || return 1
+         done
+      fi
+      dspath=$(updates_ctzfsds "$ctid")
+      mapfile -t snapshotzfs < <($SSH "$host" "zfs list -t snapshot -H -o name $dspath" | grep "^${dspath}@${SNAPBASE}${filter}" | cut -d '@' -f 2)
+      if test "$action" = "rm"; then
+         for snapshot in ${snapshotzfs[@]}; do
+            $SSH "$host" "zfs destroy ${dspath}@${snapshot}" 2> /dev/null || return 1
+         done
+      fi
+      snapshots=( $( printf '%s\n' "${snapshotct[@]}" "${snapshotzfs[@]}" | sort -u ) )
+      return 0
+   }
 
-        updates_snapshot() {
+   updates_snapshot() {
       local snapname="${SNAPBASE}$(date "+%Y%m%d-%H%M")"
-           local ctid="$1"
+      local ctid="$1"
       $SSH "$host" "pct snapshot $ctid $snapname" > /dev/null 2>&1
       ret="$?"
       if test "$ret" -ne 0; then
-              dspath=$(updates_ctzfsds "$ctid")
-              test "$dspath" = "" && { updates_output+=( "Unable to create snapshot, pve and zfs failed." ); return 1; }
-              $SSH "$host" "zfs snapshot $dspath/$ds@$snapname" > /dev/null 2>&1
-              ret="$?"
+         dspath=$(updates_ctzfsds "$ctid")
+         test "$dspath" = "" && { updates_output+=( "Unable to create snapshot, pve and zfs failed." ); return 1; }
+         $SSH "$host" "zfs snapshot $dspath/$ds@$snapname" > /dev/null 2>&1
+         ret="$?"
          if test "$ret" -ne 0; then
             updates_output+=( "Unable to create zfs snapshot." )
             return $ret
-              else
+         else
             updates_output+=( "ZFS snapshot $snapname created." )
-              fi
+         fi
       else
          updates_output+=( "PVE snapshot $snapname created." )
       fi
-        }
+   }
 
    updates_upgrade_rpm() {
-        local opts
-        declare -a opts
-        test "$1" = "-s" && { opts+=( "--setopt" "tsflags=test" ); snapshot=no; shift; }
-        test "$1" = "-d" && { opts+=( "--downloadonly" ); snapshot=no; shift; }
+      local opts
+      declare -a opts
+      test "$1" = "-s" && { opts+=( "--setopt" "tsflags=test" ); snapshot=no; shift; }
+      test "$1" = "-d" && { opts+=( "--downloadonly" ); snapshot=no; shift; }
       local host="$1"
       local CT=""
       local ret
@@ -79,7 +79,7 @@ updates() {
       test "$2" != "" && CT="pct exec $2 -- "
       
       if test "$CT" != "" -a "$snapshot" != "no"; then
-                   updates_snapshot "$2" || return 1
+         updates_snapshot "$2" || return 1
       fi
       
       while read -u 11 -r line; do
@@ -91,10 +91,10 @@ updates() {
    }
 
    updates_upgrade_deb() {
-        local opts
-        declare -a opts
-        test "$1" = "-s" && { opts+=( "--dry-run" ); snapshot=no; shift; }
-        test "$1" = "-d" && { opts+=( "--download-only" ); snapshot=no; shift; }
+      local opts
+      declare -a opts
+      test "$1" = "-s" && { opts+=( "--dry-run" ); snapshot=no; shift; }
+      test "$1" = "-d" && { opts+=( "--download-only" ); snapshot=no; shift; }
       local host="$1"
       local CT=""
       local ret
@@ -104,7 +104,7 @@ updates() {
       test "$2" != "" && CT="pct exec $2 -- "
       
       if test "$CT" != "" -a "$snapshot" != "no"; then
-                   updates_snapshot "$2" || return 1
+         updates_snapshot "$2" || return 1
       fi
       
       while read -u 11 -r line; do
@@ -116,8 +116,8 @@ updates() {
    }
 
    updates_ck_rpm() {
-        local UPDATE=0
-        test "$1" = "-u" && { UPDATE=1; shift; }
+      local UPDATE=0
+      test "$1" = "-u" && { UPDATE=1; shift; }
       local host="$1"
 
       if test "$2" != ""; then
@@ -147,8 +147,8 @@ updates() {
    }
 
    updates_ck_deb() {
-        local UPDATE=0
-        test "$1" = "-u" && { UPDATE=1; shift; }
+      local UPDATE=0
+      test "$1" = "-u" && { UPDATE=1; shift; }
       local host="$1"
 
       if test "$2" != ""; then
@@ -179,7 +179,7 @@ updates() {
       local pkg curver newver cursrc newsrc pkgtmp
       while read pkg curver newver cursrc newsrc; do
          if test "$curver" != "$newver"; then
-                test "${pkgstatetemp[$pkg]}" = "" && pkgtmp="$pkg:$arch" || pkgtmp="$pkg"
+            test "${pkgstatetemp[$pkg]}" = "" && pkgtmp="$pkg:$arch" || pkgtmp="$pkg"
             if test "${pkgstatetemp[$pkgtmp]}" = "hi"; then
                updates_hold+=( "$pkg" )
             else
@@ -224,7 +224,7 @@ updates() {
    }
 
    updates_checkos() {
-                local -n result="$1"
+      local -n result="$1"
       local host="$2"
       test "$3" != "" && local CT="pct exec $3 --"
       
@@ -239,40 +239,40 @@ updates() {
       return 0
    }
 
-   action="$1"
+   local action="$1"
    shift
 
-    local opts
-    unset opts
-    declare -a opts
+   local opts
+   unset opts
+   declare -a opts
    case "$action" in
       "error")
-            test "${_LIBUPDATES_ERROR}" != "" && echo "${_LIBUPDATES_ERROR}"
-            return 0
-         ;;
+         test "${_LIBUPDATES_ERROR}" != "" && echo "${_LIBUPDATES_ERROR}"
+         return 0
+      ;;
       "check")
-              unset _LIBUPDATES_ERROR
-            test "$1" = "-u" && { opts+=( "-u" ); shift; }
+         unset _LIBUPDATES_ERROR
+         test "$1" = "-u" && { opts+=( "-u" ); shift; }
          local os
-                        updates_checkos os "$1" "$2" || return 1
+         updates_checkos os "$1" "$2" || return 1
          updates_ck_${os} "${opts[@]}" "$1" "$2"
       ;;
       "upgrade")
-              unset _LIBUPDATES_ERROR
-            test "$1" = "-d" && { opts+=( "-d" ); shift; }
-            test "$1" = "-s" && { opts+=( "-s" ); shift; }
+         unset _LIBUPDATES_ERROR
+         test "$1" = "-d" && { opts+=( "-d" ); shift; }
+         test "$1" = "-s" && { opts+=( "-s" ); shift; }
          local os
          updates_checkos os "$1" "$2"
          test "$?" -ne 0 && { _LIBUPDATES_ERROR="updates: Unable to determine OS ($os)"; return 1; }
          updates_upgrade_${os} "${opts[@]}" "$1" "$2"
       ;;
       "is-container")
-              unset _LIBUPDATES_ERROR
+         unset _LIBUPDATES_ERROR
          $SSH "$1" "grep -q 'xcfs /proc/meminfo' /proc/1/mounts" 2> /dev/null
-            return $?
+         return $?
         ;;
       "container-list")
-              unset _LIBUPDATES_ERROR
+         unset _LIBUPDATES_ERROR
          unset containers
          $SSH "$1" which pct > /dev/null 2>&1
          test "$?" -ne 0 && return 1
@@ -295,7 +295,6 @@ updates() {
          updates_snapshotaction rm "$1" "$2" "$3" "$4" || return 1
          return 0
       ;;
-
       *) _LIBUPDATES_ERROR="updates: unknown action $action"; return 1 ;;
    esac
 }
