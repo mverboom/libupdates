@@ -52,7 +52,7 @@ updates() {
       if test "$ret" -ne 0; then
          dspath=$(updates_ctzfsds "$ctid")
          test "$dspath" = "" && { updates_output+=( "Unable to create snapshot, pve and zfs failed." ); return 1; }
-         $SSH "$host" "zfs snapshot $dspath/$ds@$snapname" > /dev/null 2>&1
+         $SSH "$host" "zfs snapshot $dspath@$snapname" > /dev/null 2>&1
          ret="$?"
          if test "$ret" -ne 0; then
             updates_output+=( "Unable to create zfs snapshot." )
@@ -63,6 +63,7 @@ updates() {
       else
          updates_output+=( "PVE snapshot $snapname created." )
       fi
+      return 1
    }
 
    updates_upgrade_rpm() {
