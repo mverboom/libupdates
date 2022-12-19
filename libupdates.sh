@@ -63,7 +63,6 @@ updates() {
       else
          updates_output+=( "PVE snapshot $snapname created." )
       fi
-      return 1
    }
 
    updates_upgrade_rpm() {
