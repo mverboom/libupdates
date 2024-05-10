@@ -277,9 +277,9 @@ updates() {
          $SSH "$1" which pct > /dev/null 2>&1
          test "$?" -ne 0 && return 1
          declare -Ag containers
-         while read -u 6 id state name; do
-            test "$state" = "running" && containers["$id"]="$name"
-         done 6< <( $SSH "$1" "pct list" | tail -n +2 )
+         while read -u 6 id name; do
+            containers["$id"]="$name"
+         done 6< <( $SSH "$1" "pvesh get /nodes/localhost/lxc --output-format json" | jq -r '.[] | select(.status=="running") | [.vmid,.name] | @tsv' )
          return 0
       ;;
       "snapshot-list")
