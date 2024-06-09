@@ -168,6 +168,7 @@ updates() {
       local arch=$($SSH "$host" "$CT"'dpkg --print-architecture')
       if test "$UPDATE" = "1"; then
          $SSH "$host" "$CT"'apt-get update' > /dev/null 2>&1
+         test "$?" -ne 0 && return 1
       fi
       local pkg curver state
       while read pkg state; do
@@ -255,7 +256,7 @@ updates() {
          test "$1" = "-u" && { opts+=( "-u" ); shift; }
          local os
          updates_checkos os "$1" "$2" || return 1
-         updates_ck_${os} "${opts[@]}" "$1" "$2"
+         updates_ck_${os} "${opts[@]}" "$1" "$2" || return 1
       ;;
       "upgrade")
          unset _LIBUPDATES_ERROR
